@@ -128,7 +128,7 @@ class MemoryBuffer:
                 s = random.uniform(a, b)
                 idx, error, data = self.buffer.get(s)
                 batch.append((*data, idx))
-            idx = np.array([i[7] for i in batch])
+            idx = np.array([i[9] for i in batch])
         # Sample randomly from Buffer
         elif self.count < batch_size:
             idx = None
@@ -140,12 +140,14 @@ class MemoryBuffer:
         # Return a batch of experience
         s1_batch = np.array([i[0] for i in batch], dtype=object)
         s2_batch = np.array([i[1] for i in batch], dtype=object)
-        a_batch = np.array([i[2] for i in batch], dtype=object)
-        r_batch = np.array([i[3] for i in batch], dtype=object)
-        d_batch = np.array([i[4] for i in batch], dtype=object)
-        new_s1_batch = np.array([i[5] for i in batch], dtype=object)
-        new_s2_batch = np.array([i[6] for i in batch], dtype=object)
-        return s1_batch,s2_batch, a_batch, r_batch, d_batch, new_s1_batch,new_s2_batch, idx
+        s3_batch = np.array([i[2] for i in batch], dtype=object)
+        a_batch = np.array([i[3] for i in batch], dtype=object)
+        r_batch = np.array([i[4] for i in batch], dtype=object)
+        d_batch = np.array([i[5] for i in batch], dtype=object)
+        new_s1_batch = np.array([i[6] for i in batch], dtype=object)
+        new_s2_batch = np.array([i[7] for i in batch], dtype=object)
+        new_s3_batch = np.array([i[8] for i in batch], dtype=object)
+        return s1_batch,s2_batch, s3_batch, a_batch, r_batch, d_batch, new_s1_batch,new_s2_batch, new_s3_batch, idx
 
     def update(self, idx, new_error):
         """ Update priority for idx (PER)
