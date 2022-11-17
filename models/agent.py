@@ -5,10 +5,12 @@ from keras.optimizers import Adam
 from keras.models import Model
 import numpy as np
 from noise import OUActionNoise
+from buffer import MemoryBuffer
 
 
 class LSTMAgent:
-    def __init__(self, window_length: int, n_stocks: int, actor_lr: float, critic_lr: float, tau: float, discount_rate: float):
+    def __init__(self, window_length: int, n_stocks: int, actor_lr: float, critic_lr: float,
+                 tau: float, discount_rate: float, buffer_capacity: int = 1_000_000, batch_size: int = 32):
         
         self.window_length = window_length
         self.n_stocks = n_stocks
@@ -18,8 +20,8 @@ class LSTMAgent:
         self.gamma = discount_rate
         
         self.noise = OUActionNoise(size=n_stocks)
-        self.buffer = ...
-        self.w_per = ...
+        self.buffer = MemoryBuffer(buffer_size=buffer_capacity, with_per=True)
+        self.batch_size = batch_size
         
         self.actor = self._build_actor()
         self.actor_target = self._build_actor()
@@ -155,7 +157,7 @@ class LSTMAgent:
             weights_t[i] = self.tau*weights[i] + (1-self.tau)*weights_t[i]
         self.critic_target.set_weights(weights_t)
         
-    def train_critic(self, obs, acts, target):
+    def train_critic(self, obs: list, acts, target):
         with tf.GradientTape() as tape:
             q_values = self.critic([obs, acts], training=True)
             td_error = q_values - target
@@ -164,22 +166,30 @@ class LSTMAgent:
         critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
         self.critic_optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
         
-    def train_actor(self, obs, critic):
+    def train_actor(self, obs: list, critic):
         with tf.GradientTape() as tape:
             actions = self.actor(obs)
             actor_loss = -tf.reduce_mean(critic([obs,actions]))
         actor_grad = tape.gradient(actor_loss,self.actor.trainable_variables)
         self.actor_optimizer.apply_gradients(zip(actor_grad,self.actor.trainable_variables))
         
-    def sample_batch(self, batch_size):
+    def sample_batch(self, batch_size: int):
         """ Sampling from the batch
         """
         return self.buffer.sample_batch(batch_size)
         
-    def save_weights(self,path):
-        self.actor.save_network(path)
-        self.critic.save_network(path)
+    def save_weights(self, paths: list[str]):
+        assert len(paths) == 4
+        self.actor.save_weights(paths[0])
+        self.actor_target.save_weights(paths[1])
         
-    def load_weights(self, pretrained):
-        self.actor.load_network(pretrained)
-        self.critic.load_network(pretrained)
+        self.critic.save_weights(paths[2])
+        self.critic_target.save_weights(paths[3])
+        
+    def load_weights(self, paths: list[str]):
+        assert len(paths) == 4
+        self.actor.load_weights(paths[0])
+        self.actor.load_weights(paths[1])
+        
+        self.critic.load_weights(paths[2])
+        self.actor.load_weights(paths[3])
