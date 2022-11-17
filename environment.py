@@ -41,4 +41,4 @@ class StockEnv(Env):
         change = np.sum(action-port_weights)
         rel_price = self.portfolio.relative_price
         reward = np.log((action*rel_price) - self.transaction_cost*change)
-        return reward
+        return np.sum(reward)
