@@ -13,7 +13,6 @@ class Portfolio:
     asset_names: list[str]
     amount: int
     weights: NDArray[np.float32]
-    creation_date: str
     window: int
     train_split: float
     mode: str
@@ -33,13 +32,11 @@ class Portfolio:
             self.dates = self.train_dates
         else:
             self.dates = self.test_dates
-        assert self.creation_date in self.dates
         
-        self._cur_date_idx = np.where(self.dates == self.creation_date)[0][0]
-        if self._cur_date_idx < self.window:
-            self._cur_date_idx = self.window
-        self.past_dates = [self.creation_date]
-        prices = self.data_handler.get_close_price(self.creation_date)
+        self._cur_date_idx = self.window
+
+        self.past_dates = [self.current_date]
+        prices = self.data_handler.get_close_price(self.current_date)
         self.prices = prices
         self.n_shares = (self.weights*self.amount)/prices
         self.past_prices = [prices]
@@ -75,7 +72,8 @@ class Portfolio:
         if weights is not None:
             self.update_allocation(weights)
         self._cur_date_idx += 1
-        if self._cur_date_idx >= len(self.dates):...
+        if self._cur_date_idx >= len(self.dates):
+            self._cur_date_idx = len(self.dates)-1
         date = self.current_date
         prices = self.data_handler.get_close_price(date)
         self.update_prices(prices)
@@ -106,10 +104,15 @@ class Portfolio:
         
     @property
     def relative_price(self):
-        next_date = self.dates[self._cur_date_idx+1]
+        done = False
+        try:
+            next_date = self.dates[self._cur_date_idx+1]
+        except IndexError:
+            next_date = self.dates[self._cur_date_idx]
+            done = True
         next_prices = self.data_handler.get_close_price(next_date)
-        curr_prices = self.prices
-        return next_prices/curr_prices
+        curr_prices = self.prices + 0.01
+        return next_prices/curr_prices, done
     
     @property    
     def performance_df(self) -> pd.DataFrame:
