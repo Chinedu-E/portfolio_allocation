@@ -42,7 +42,7 @@ def parse_args():
                         help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=10,
                         help="number of iterations between every optimization step")
-    parser.add_argument("--start-epoch", type=int, default=50,
+    parser.add_argument("--start-epoch", type=int, default=10,
                         help="number of epochs to pass before training starts")
  
     # Bells and whistles
@@ -104,13 +104,14 @@ def main():
             if t % args.window == 0:
                 agent.memorize(state, action, reward, done, nstate)
                 
-            if epoch > args.num_epochs and t%args.learning_freq == 0:
+            if epoch+1 >= args.start_epoch and t%args.learning_freq == 0:
                 agent.learn()
             
             state = nstate
             rewards.append(reward)
             t += 1
-        agent.save_weights(paths)
+        if epoch+1 % args.save_freq:
+            agent.save_weights(paths)
         all_rewards.append(rewards)
         portfolios.append(portfolio)
         
