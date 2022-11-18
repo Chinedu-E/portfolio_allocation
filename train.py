@@ -69,10 +69,10 @@ def main():
     np.random.seed(args.seed)
     random.seed(args.seed)
     init_weights = np.random.random(len(args.companies))
-    paths = ["weights/actor.h5",
-             "weights/actor_target.h5",
-             "weights/critic.h5",
-             "weights/critic_target.h5"]
+    paths = [f"weights/{args.policy}-{args.window}-actor.h5",
+             f"weights/{args.policy}-{args.window}-actor_target.h5",
+             f"weights/{args.policy}-{args.window}-critic.h5",
+             f"weights/{args.policy}-{args.window}-critic_target.h5"]
 
     
     
