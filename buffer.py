@@ -87,11 +87,11 @@ class MemoryBuffer:
         self.with_per = with_per
         self.buffer_size = buffer_size
 
-    def memorize(self, state1, state2, action, reward, done, new_state1,new_state2, error=None):
+    def memorize(self, state1, state2,state3, action, reward, done, new_state1,new_state2, new_state3, error=None):
         """ Save an experience to memory, optionally with its TD-Error
         """
 
-        experience = (state1, state2, action, reward, done, new_state1, new_state2)
+        experience = (state1, state2, state3, action, reward, done, new_state1, new_state2, new_state3)
         if(self.with_per):
             priority = self.priority(error[0])
             self.buffer.add(priority, experience)
@@ -127,7 +127,10 @@ class MemoryBuffer:
                 a, b = T * i, T * (i + 1)
                 s = random.uniform(a, b)
                 idx, error, data = self.buffer.get(s)
-                batch.append((*data, idx))
+                try:
+                    batch.append((*data, idx))
+                except:
+                    print("data", data)
             idx = np.array([i[9] for i in batch])
         # Sample randomly from Buffer
         elif self.count < batch_size:
@@ -138,15 +141,15 @@ class MemoryBuffer:
             batch = random.sample(self.buffer, batch_size)
 
         # Return a batch of experience
-        s1_batch = np.array([i[0] for i in batch], dtype=object)
-        s2_batch = np.array([i[1] for i in batch], dtype=object)
-        s3_batch = np.array([i[2] for i in batch], dtype=object)
-        a_batch = np.array([i[3] for i in batch], dtype=object)
-        r_batch = np.array([i[4] for i in batch], dtype=object)
+        s1_batch = np.array([i[0] for i in batch])
+        s2_batch = np.array([i[1] for i in batch])
+        s3_batch = np.array([i[2] for i in batch])
+        a_batch = np.array([i[3] for i in batch])
+        r_batch = np.array([i[4] for i in batch])
         d_batch = np.array([i[5] for i in batch], dtype=object)
-        new_s1_batch = np.array([i[6] for i in batch], dtype=object)
-        new_s2_batch = np.array([i[7] for i in batch], dtype=object)
-        new_s3_batch = np.array([i[8] for i in batch], dtype=object)
+        new_s1_batch = np.array([i[6] for i in batch])
+        new_s2_batch = np.array([i[7] for i in batch])
+        new_s3_batch = np.array([i[8] for i in batch])
         return s1_batch,s2_batch, s3_batch, a_batch, r_batch, d_batch, new_s1_batch,new_s2_batch, new_s3_batch, idx
 
     def update(self, idx, new_error):
