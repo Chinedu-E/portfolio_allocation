@@ -11,6 +11,7 @@ class DataHandler:
     def __post_init__(self):
         df = self.get_data()
         self.df = df
+        self.df.fillna(0, inplace=True)
         self.scaled_data = ...
         train_data, test_data =self._split(df)
         self.train_data = self.windowed_dataset(train_data)
@@ -90,5 +91,7 @@ class DataHandler:
         return low_price
     
     def get_n_past(self, date: str, window: int):
-        return self.df.loc[:date].iloc[-(window+1):-1]
+        df = self.df.loc[:date].iloc[-(window+1):-1]
+        df.fillna(0, inplace=True)
+        return df
     
