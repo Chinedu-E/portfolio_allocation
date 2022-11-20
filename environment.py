@@ -4,7 +4,7 @@ from portfolio import *
 class StockEnv(Env):
     transaction_cost = 0.2
     
-    def __init__(self, portfolio: Portfolio, mode: str = "train"):
+    def __init__(self, portfolio: Portfolio, mode: str):
         self.portfolio = portfolio
         self.mode = mode
         self.action_shape = (self.portfolio.num_assets,)
@@ -31,7 +31,7 @@ class StockEnv(Env):
         
     def reward_function(self, action):
         port_weights = self.portfolio.get_proportions()
-        change = np.abs(action-port_weights)
+        change = np.sum(np.abs(action-port_weights))
         rel_price, done = self.portfolio.relative_price
-        reward = np.log(np.sum((action*rel_price)) - self.transaction_cost*change)
+        reward = np.log(np.dot(action, rel_price) - self.transaction_cost*change)
         return reward, done
