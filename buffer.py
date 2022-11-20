@@ -102,7 +102,6 @@ class MemoryBuffer:
                 self.buffer.append(experience)
                 self.count += 1
             else:
-                self.buffer.popleft()
                 self.buffer.append(experience)
 
     def priority(self, error):

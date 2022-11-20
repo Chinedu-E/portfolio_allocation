@@ -10,19 +10,28 @@ from buffer import MemoryBuffer
 
 class DDPGAgent:
     def __init__(self, window_length: int, n_stocks: int, actor_lr: float, critic_lr: float,
-                 tau: float, discount_rate: float, buffer_capacity: int, batch_size: int, policy: str):
+                 tau: float, discount_rate: float, buffer_capacity: int, batch_size: int, policy: str,
+                 epsilon: float, epsilon_min: float, epsilon_decay: float, mode: str):
         
         assert policy in ["CNN", "LSTM"]
+        assert mode in ["train", "test"]
+
         self.policy = policy
+        self.mode = mode
         self.window_length = window_length
         self.n_stocks = n_stocks
+
+        self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
         self.tau = tau
         self.gamma = discount_rate
+        self.w_per = False
         
         self.noise = OUActionNoise(size=n_stocks)
-        self.buffer = MemoryBuffer(buffer_size=buffer_capacity, with_per=True)
+        self.buffer = MemoryBuffer(buffer_size=buffer_capacity, with_per=self.w_per)
         self.batch_size = batch_size
         
         self.actor = self._build_actor()
@@ -109,12 +118,21 @@ class DDPGAgent:
         return model
         
     def make_action(self, obs: list, t: int, noise=True):
-        action_ = self.actor.predict(obs)[0]
+        if self.mode == "train":
+            e = np.random.randn()
+            if e < self.epsilon:
+                action = np.random.random(size=self.n_stocks)
+                action = np.array(tf.nn.softmax(action))
+                return action
+            else:
+                return self.actor.predict(obs)[0]
+        else:
+            return self.actor.predict(obs)[0]
         #a = np.clip(action_ + self.noise.generate(t) if noise else 0, 0, 1)
         return action_
     
     def learn(self):
-        if (self.buffer.size() <= self.batch_size): return
+        if (self.buffer.size() <= self.batch_size): return 0,0
         # sample from buffer
         states, actions, rewards, dones, new_states, idx = self.sample_batch(self.batch_size)
         
@@ -130,19 +148,24 @@ class DDPGAgent:
             else:
                 critic_target[i] = self.gamma * q_vals[i] + rewards[i]
                 
-            self.buffer.update(idx[i], abs(q_vals[i]-critic_target[i])[0])
+            if self.w_per:
+                self.buffer.update(idx[i], abs(q_vals[i]-critic_target[i])[0])
                 
         # train(or update) the actor & critic and target networks
-        self.update_networks(states, actions, critic_target)
+        actor_loss, critic_loss = self.update_networks(states, actions, critic_target)
+        return actor_loss, critic_loss
         
     def memorize(self, obs, action, reward, done, new_obs):
-        act = self.actor.predict(obs)
-        qval = self.critic([*obs, act])
+        if self.w_per:
+            act = self.actor.predict(obs)
+            qval = self.critic([*obs, act])
         
-        next_act = self.actor.predict(new_obs)
-        next_q_val = self.critic_target.predict([*new_obs, next_act])
-        new_val = reward + self.gamma*next_q_val
-        td_error = abs(new_val - qval)[0]
+            next_act = self.actor.predict(new_obs)
+            next_q_val = self.critic_target.predict([*new_obs, next_act])
+            new_val = reward + self.gamma*next_q_val
+            td_error = abs(new_val - qval)[0]
+        else:
+            td_error = 0
         
         self.buffer.memorize(*obs, action, reward, done, *new_obs, td_error)
     
@@ -158,17 +181,14 @@ class DDPGAgent:
         """ Train actor & critic from sampled experience
         """ 
         # update critic
-        self.train_critic(obs, acts, critic_target)
-        
-        # get next action and Q-value Gradient
-        n_actions = self.actor.predict(obs)
-        q_grads = self.Qgradient(obs, n_actions)
+        critic_loss = self.train_critic(obs, acts, critic_target)
         
         # update actor
-        self.train_actor(obs, self.critic)
+        actor_loss = self.train_actor(obs, self.critic)
         
         # update target networks
         self.update_target_networks()
+        return actor_loss, critic_loss
         
         
     def update_target_networks(self):
@@ -192,6 +212,7 @@ class DDPGAgent:
             self.critic_loss = float(critic_loss)
         critic_grad = tape.gradient(critic_loss, self.critic.trainable_variables)
         self.critic_optimizer.apply_gradients(zip(critic_grad, self.critic.trainable_variables))
+        return critic_loss
         
     def train_actor(self, obs: list, critic):
         with tf.GradientTape() as tape:
@@ -199,6 +220,7 @@ class DDPGAgent:
             actor_loss = -tf.reduce_mean(critic([*obs,actions]))
         actor_grad = tape.gradient(actor_loss,self.actor.trainable_variables)
         self.actor_optimizer.apply_gradients(zip(actor_grad,self.actor.trainable_variables))
+        return actor_loss
         
     def sample_batch(self, batch_size: int):
         """ Sampling from the batch
@@ -212,6 +234,10 @@ class DDPGAgent:
         ns2 = tf.convert_to_tensor(ns2.reshape(ns2.shape[0], self.n_stocks*4, self.n_stocks*4))
         ns3 = tf.convert_to_tensor(ns3.reshape(ns3.shape[0], self.n_stocks))
         return [s1, s2, s3], a, r, d, [ns1, ns2, ns3], idx
+
+    def decay(self):
+        """Linear decay to the epsilon value"""
+        self.epsilon = max(self.epsilon_min, self.epsilon-self.epsilon_decay)
         
     def save_weights(self, paths: list[str]):
         assert len(paths) == 4
