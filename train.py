@@ -1,7 +1,9 @@
 import datetime
 import argparse
+from collections import deque
 
 import numpy as np
+import tensorflow as tf
 import random
 import matplotlib.pyplot as plt
 
@@ -23,17 +25,17 @@ def parse_args():
     
     # Core Algorithm parameters
     parser.add_argument("--policy", type=str, default="LSTM", help="one of CNN or LSTM policy")
-    parser.add_argument("--buffer-size", type=int, default=100_000, help="replay buffer size")
+    parser.add_argument("--buffer-size", type=int, default=10_000, help="replay buffer size")
     parser.add_argument("--actor-lr", type=float, default=3e-2, help="actor learning rate for Adam optimizer")
     parser.add_argument("--critic-lr", type=float, default=1e-2, help="critic learning rate for Adam optimizer")
     parser.add_argument("--tau", type=float, default=1e-4, help="which seed to use")
     parser.add_argument("--discount-rate", type=float, default=0.995,
                         help="gamma value for discounted rewards")
-    parser.add_argument("--epsilon-min", type=float, default=0.0,
+    parser.add_argument("--epsilon-min", type=float, default=0.1,
                         help="minimum epsilon value for exploration")
-    parser.add_argument("--epsilon", type=float, default=0.0,
+    parser.add_argument("--epsilon", type=float, default=0.9,
                         help="starting epsilon value for exploration")
-    parser.add_argument("--epsilon-decay", type=float, default=0.0,
+    parser.add_argument("--epsilon-decay", type=float, default=0.1,
                         help="epsilon decay value for exploration")
  
     parser.add_argument("--num-epochs", type=int, default=100,
@@ -74,19 +76,25 @@ def main():
              f"weights/{args.policy}-{args.window}-critic.h5",
              f"weights/{args.policy}-{args.window}-critic_target.h5"]
 
-    
+    logdir = f"logs/scalars/{args.mode}/{args.policy}" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+    file_writer.set_as_default()
     
     agent= DDPGAgent(window_length=args.window, n_stocks=len(args.companies), actor_lr=args.actor_lr,
                      critic_lr=args.critic_lr, tau=args.tau, discount_rate=args.discount_rate,
-                     buffer_capacity=args.buffer_size, batch_size=args.batch_size, policy=args.policy)
+                     buffer_capacity=args.buffer_size, batch_size=args.batch_size, policy=args.policy,
+                     mode=args.mode, epsilon=args.epsilon, epsilon_decay=args.epsilon_decay, epsilon_min=args.epsilon_min)
     
     if args.load_on_start:
         try:
             agent.load_weights(paths)
         except:
             print("Could not find older models")
-    all_rewards = []
-    portfolios = []
+    max_len = 3
+    all_rewards = deque(maxlen=max_len)
+    actor_losses = []
+    critic_losses = []
+    portfolios = deque(maxlen=max_len)
     t = 0
     for epoch in range(args.num_epochs):
         portfolio = Portfolio(asset_names=args.companies, amount=args.initial_amount, weights=init_weights
@@ -101,25 +109,34 @@ def main():
                 action = agent.make_action(state, t)
             nstate, reward, done, info = env.step(action)
             print(info)
-            if t % args.window == 0:
+            if args.mode== "train":
                 agent.memorize(state, action, reward, done, nstate)
                 
-            if epoch+1 >= args.start_epoch and t%args.learning_freq == 0:
-                agent.learn()
+            if epoch+1 >= args.start_epoch and t%args.learning_freq == 0 and args.mode== "train":
+                actor_loss, critic_loss = agent.learn()
+                tf.summary.scalar('actor loss', data=actor_loss, step=t)
+                tf.summary.scalar('critic loss', data=critic_loss, step=t)
             
             state = nstate
             rewards.append(reward)
             t += 1
-        if epoch+1 % args.save_freq:
+            tf.summary.scalar('reward', data=reward, step=t)
+            tf.summary.scalar('portfolio value', data=portfolio.total_portfolio_value, step=t)
+        if epoch+1 % args.save_freq == 0 and args.mode== "train":
             agent.save_weights(paths)
+        agent.decay()
         all_rewards.append(rewards)
         portfolios.append(portfolio)
         
-    for rewards in all_rewards:
-        plt.plot(rewards)
-        plt.show()
+    #for rewards in all_rewards:
+    #    plt.plot(rewards)
+    #    plt.show()
     for portfolio in portfolios:
         portfolio.plot()
+    #plt.plot(actor_losses)
+    #plt.plot(critic_losses)
+    #plt.show()
+
     
 if __name__ == "__main__":
     main()
