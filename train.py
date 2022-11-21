@@ -26,7 +26,7 @@ def parse_args():
     
     # Core Algorithm parameters
     parser.add_argument("--policy", type=str, default="CNN", help="one of CNN or LSTM policy")
-    parser.add_argument("--buffer-size", type=int, default=100_000, help="replay buffer size")
+    parser.add_argument("--buffer-size", type=int, default=1_000_000, help="replay buffer size")
     parser.add_argument("--actor-lr", type=float, default=3e-2, help="actor learning rate for Adam optimizer")
     parser.add_argument("--critic-lr", type=float, default=1e-2, help="critic learning rate for Adam optimizer")
     parser.add_argument("--tau", type=float, default=0.005, help="which seed to use")
@@ -43,10 +43,12 @@ def parse_args():
                         help="total number of episodes to run the environment for")
     parser.add_argument("--batch-size", type=int, default=32,
                         help="number of transitions to optimize at the same time")
-    parser.add_argument("--learning-freq", type=int, default=25,
+    parser.add_argument("--action-freq", type=int, default=1,
+                        help="number of iterations between every action step")
+    parser.add_argument("--learning-freq", type=int, default=50,
                         help="number of iterations between every optimization step")
-    parser.add_argument("--target-update-freq", type=int, default=500,
-                        help="number of iterations between every optimization step")
+    parser.add_argument("--target-update-freq", type=int, default=5000,
+                        help="number of iterations between every updating the target networks")
     parser.add_argument("--start-epoch", type=int, default=10,
                         help="number of epochs to pass before training starts")
  
@@ -111,7 +113,7 @@ def main():
         done = False
         rewards = []
         while not done:
-            if t % args.window == 0:
+            if t % args.action_freq == 0:
                 action = agent.make_action(state, t)
             nstate, reward, done, info = env.step(action)
             print(info)
