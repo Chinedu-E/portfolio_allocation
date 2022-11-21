@@ -7,10 +7,7 @@ class StockEnv(Env):
     def __init__(self, portfolio: Portfolio, mode: str):
         self.portfolio = portfolio
         self.mode = mode
-        self.action_shape = (self.portfolio.num_assets,)
-        self.observation_shape = [(self.portfolio.num_assets, self.portfolio.num_assets, 3),
-                                  self.action_shape]
-        
+
         
     def step(self, action):
         state = self.get_state()
@@ -24,8 +21,9 @@ class StockEnv(Env):
     
     def get_state(self) -> list:
         date = self.portfolio.current_date
-        state1 = np.expand_dims(self.portfolio.get_data(date).values, axis=0)
-        state2 = np.expand_dims(self.portfolio.get_data(date).pct_change().cov().values, axis=0)
+        state1 = self.portfolio.get_data(date)
+        state1 = self._process_state(state1)
+        state2 = np.expand_dims(self.portfolio.get_data(date)["Close"].pct_change().cov().values, axis=0)
         state3 = np.expand_dims(self.portfolio.get_proportions(), axis=0)
         return [state1, state2, state3]
         
@@ -35,3 +33,12 @@ class StockEnv(Env):
         rel_price, done = self.portfolio.relative_price
         reward = np.log(np.dot(action, rel_price) - self.transaction_cost*change)
         return reward, done
+    
+    def _process_state(self, obs):
+        high_normal = np.expand_dims(obs["High"]/obs["Close"].iloc[-1], axis=-1)
+        low_normal = np.expand_dims(obs["Low"]/obs["Close"].iloc[-1], axis=-1)
+        close_normal = np.expand_dims(obs["Close"]/obs["Close"].iloc[-1], axis=-1)
+        final_state = np.concatenate([close_normal, high_normal, low_normal], axis=-1)
+        final_state = np.expand_dims(final_state, axis=0)
+        return final_state
+        
