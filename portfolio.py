@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Union
 import numpy as np
+import datetime
 from numpy.typing import NDArray
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,24 +15,21 @@ class Portfolio:
     amount: int
     weights: NDArray[np.float32]
     window: int
-    train_split: float
     mode: str
+    start_date: str
+    test_date: str
+    data_handler: DataHandler
     
         
     def __post_init__(self):    
         assert self.mode in ["train", "test"]
+        
         if np.sum(self.weights) > 1:
             self.weights = tf.nn.softmax(self.weights)
             
         self.num_assets = len(self.asset_names)
         self.values = [self.amount]
-        self.data_handler = DataHandler(self.asset_names)
-        self.dates = self.data_handler.df.index.values
-        self.train_dates, self.test_dates = self._train_test_split(self.dates)
-        if self.mode == "train":
-            self.dates = self.train_dates
-        else:
-            self.dates = self.test_dates
+        self.set_mode(self.mode)
         
         self._cur_date_idx = self.window
 
@@ -42,12 +40,6 @@ class Portfolio:
         self.past_prices = [prices]
         
         
-    def _train_test_split(self, dates):
-        idx = int(len(dates)*self.train_split)
-        train_dates = dates[:idx]
-        test_dates = dates[idx:]
-        return train_dates, test_dates
-        
     def get_proportions(self):
         return self.weights
     
@@ -57,9 +49,9 @@ class Portfolio:
     def set_mode(self, mode: str) -> None:
         assert mode in ["train", "test"]
         if mode == "train":
-            self.dates = self.train_dates
+            self.dates = self.data_handler.train_data.index.values
         if mode == "test":
-            self.dates = self.test_dates
+            self.dates = self.data_handler.test_data.index.values
         
     def update_allocation(self, weights: NDArray[np.float32]) -> None:
         date = self.current_date

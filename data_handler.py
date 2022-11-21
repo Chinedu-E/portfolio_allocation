@@ -2,44 +2,39 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from pandas_datareader import data as pdr
 
 
 @dataclass 
 class DataHandler:
     companies: list[str]
+    start: str
+    end: str
+    test_start: str
     
     def __post_init__(self):
         df = self.get_data()
         self.df = df
-        self.df.fillna(0, inplace=True)
         self.scaled_data = ...
         train_data, test_data =self._split(df)
-        self.train_data = self.windowed_dataset(train_data)
-        self.test_data = self.windowed_dataset(test_data)
+        self.train_data = train_data
+        self.test_data = test_data
         self.mode = None
     
     def get_data(self):
-        df = pd.DataFrame()
-        labels = []
-        for c in self.companies:
-            labels += [c]*4
-            c_df = pd.read_csv(f"data/{c}.csv")
-            c_df = c_df.set_index("Date")
-            df = pd.concat([c_df, df], axis = 1)
-        df.columns = pd.MultiIndex.from_arrays([labels, df.columns])
+        df = pdr.get_data_yahoo(self.companies, self.start, self.end)
         return df
     
-    def _split(self, df, train_date: str = "2012-01-05",
-               test_date: str = "2019-01-02") -> tuple[pd.DataFrame, pd.DataFrame]:
-        train_data = df.loc[train_date:test_date]
-        test_data = df.loc[test_date:]
+    def _split(self, df) -> tuple[pd.DataFrame, pd.DataFrame]:
+        train_data = df.loc[self.start:self.test_start]
+        test_data = df.loc[self.test_start:]
         return train_data, test_data
     
     def set_mode(self, mode: str):
         assert mode in ["train", "test"]
         self.mode = mode
     
-    def windowed_dataset(self, df, window_size=60, batch_size=32, shuffle_buffer=1000):
+    def windowed_dataset(self, df, window_size=30, batch_size=32, shuffle_buffer=1000):
         self.window_size = window_size
         self.batch_size = batch_size
         # Create dataset from the series
@@ -67,31 +62,18 @@ class DataHandler:
             return data
     
     def get_close_price(self, date: str):
-        close_price = np.zeros(len(self.companies))
-        for i, company in enumerate(self.companies):
-            close_price[i] = self.df.loc[date][company, "Close"]
-        return close_price
+        return self.df["Adj Close"].loc[date]
     
     def get_open_price(self, date: str):
-        open_price = np.zeros(len(self.companies))
-        for i, company in enumerate(self.companies):
-            open_price[i] = self.df.loc[date][company, "Open"]
-        return open_price
+        return self.df["Open"].loc[date]
     
     def get_high_price(self, date: str):
-        high_price = np.zeros(len(self.companies))
-        for i, company in enumerate(self.companies):
-            high_price[i] = self.df.loc[date][company, "High"]
-        return high_price
+        return self.df["High"].loc[date]
     
     def get_low_price(self, date: str):
-        low_price = np.zeros(len(self.companies))
-        for i, company in enumerate(self.companies):
-            low_price[i] = self.df.loc[date][company, "Low"]
-        return low_price
+        return self.df["Low"].loc[date]
     
     def get_n_past(self, date: str, window: int):
         df = self.df.loc[:date].iloc[-(window+1):-1]
-        df.fillna(0, inplace=True)
         return df
     
