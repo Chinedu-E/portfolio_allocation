@@ -46,22 +46,33 @@ class DDPGAgent:
           
     def _build_actor(self):
         #------ Starting stream 1-----#
-        input1 = Input(shape=(self.window_length, self.n_stocks*4))
+        input1 = Input(shape=(self.window_length, self.n_stocks, 3))
         
         if self.policy == "LSTM":
-            s1 = Bidirectional(LSTM(32))(input1)
+            resh = Reshape(target_shape=(self.window_length, self.n_stocks*3))(input1)
+            s1 = Bidirectional(LSTM(32, return_sequences=True))(resh)
+            s1 = Dropout(0.3)(s1)
+            s1 = LeakyReLU(0.2)(s1)
+            s1 = Bidirectional(LSTM(32))(s1)
         else:
-            resh = Reshape(target_shape=(self.window_length, self.n_stocks, 4))(input1)
-            s1 = Conv2D(32, kernel_size=3, strides=2)(resh)
+            s1 = Conv2D(64, kernel_size=3, strides=2)(input1)
+            s1 = Dropout(0.3)(s1)
+            s1 = LeakyReLU(0.2)(s1)
+            s1 = Conv2D(64, kernel_size=3, strides=2)(s1)
             
+        s1 = Dropout(0.3)(s1)
         s1 = LeakyReLU(0.2)(s1)
         s1 = Flatten()(s1)
         #------ Starting stream 2------#
         
-        input2 = Input(shape=(self.n_stocks*4, self.n_stocks*4))
+        input2 = Input(shape=(self.n_stocks, self.n_stocks))
         
         s2 = Conv1D(16, kernel_size=3, strides=1)(input2)
         s2 = LeakyReLU(0.2)(s2)
+        s2 = Dropout(0.3)(s2)
+        s2 = Conv1D(32, kernel_size=5, strides=1)(s2)
+        s2 = LeakyReLU(0.2)(s2)
+        s2 = Dropout(0.3)(s2)
         s2 = Flatten()(s2)
         
         input3 = Input(shape=(self.n_stocks))
@@ -69,9 +80,13 @@ class DDPGAgent:
         
         merged = Concatenate()([s1, s2, input3])
         
-        fc = Dense(64, kernel_regularizer="l2")(merged)
+        fc = Dense(128, kernel_regularizer="l2")(merged)
         fc = LeakyReLU()(fc)
-        fc = Dropout(0.3)(fc)
+        fc = Dropout(0.5)(fc)
+        
+        fc = Dense(128, kernel_regularizer="l2")(fc)
+        fc = LeakyReLU()(fc)
+        fc = Dropout(0.5)(fc)
         
         output = Dense(self.n_stocks, activation="softmax")(fc)
         
@@ -80,22 +95,33 @@ class DDPGAgent:
         
     def _build_critic(self):
         #------ Starting stream 1-----#
-        input1 = Input(shape=(self.window_length, self.n_stocks*4))
+        input1 = Input(shape=(self.window_length, self.n_stocks, 3))
         
         if self.policy == "LSTM":
-            s1 = Bidirectional(LSTM(32))(input1)
+            resh = Reshape(target_shape=(self.window_length, self.n_stocks*3))(input1)
+            s1 = Bidirectional(LSTM(32, return_sequences=True))(resh)
+            s1 = Dropout(0.3)(s1)
+            s1 = LeakyReLU(0.2)(s1)
+            s1 = Bidirectional(LSTM(50))(s1)
         else:
-            resh = Reshape(target_shape=(self.window_length, self.n_stocks, 4))(input1)
-            s1 = Conv2D(32, kernel_size=3, strides=2)(resh)
+            s1 = Conv2D(80, kernel_size=3, strides=2)(input1)
+            s1 = Dropout(0.3)(s1)
+            s1 = LeakyReLU(0.2)(s1)
+            s1 = Conv2D(80, kernel_size=6, strides=1)(s1)
             
+        s1 = Dropout(0.3)(s1)
         s1 = LeakyReLU(0.2)(s1)
         s1 = Flatten()(s1)
         
         #------ Starting stream 2------#
-        input2 = Input(shape=(self.n_stocks*4, self.n_stocks*4))
+        input2 = Input(shape=(self.n_stocks, self.n_stocks))
         
-        s2 = Conv1D(25, kernel_size=3, strides=1)(input2)
+        s2 = Conv1D(20, kernel_size=3, strides=1)(input2)
         s2 = LeakyReLU(0.2)(s2)
+        s2 = Dropout(0.3)(s2)
+        s2 = Conv1D(40, kernel_size=5, strides=1)(input2)
+        s2 = LeakyReLU(0.2)(s2)
+        s2 = Dropout(0.3)(s2)
         s2 = Flatten()(s2)
         
         #-------Stream 3----------
@@ -108,9 +134,13 @@ class DDPGAgent:
         
         merged = Concatenate()([s1, s2, input3, input4])
         
-        fc = Dense(120, kernel_regularizer="l2")(merged)
+        fc = Dense(256, kernel_regularizer="l2")(merged)
         fc = LeakyReLU()(fc)
-        fc = Dropout(0.3)(fc)
+        fc = Dropout(0.5)(fc)
+        
+        fc = Dense(256, kernel_regularizer="l2")(fc)
+        fc = LeakyReLU()(fc)
+        fc = Dropout(0.5)(fc)
         
         output = Dense(self.n_stocks)(fc)
         
@@ -186,8 +216,6 @@ class DDPGAgent:
         # update actor
         actor_loss = self.train_actor(obs, self.critic)
         
-        # update target networks
-        self.update_target_networks()
         return actor_loss, critic_loss
         
         
@@ -226,13 +254,13 @@ class DDPGAgent:
         """ Sampling from the batch
         """
         s1, s2, s3, a, r, d, ns1, ns2, ns3, idx =  self.buffer.sample_batch(batch_size)
-        s1 = tf.convert_to_tensor(s1.reshape(s1.shape[0], self.window_length, self.n_stocks*4))
-        s2 = tf.convert_to_tensor(s2.reshape(s2.shape[0], self.n_stocks*4, self.n_stocks*4))
-        s3 = tf.convert_to_tensor(s3.reshape(s3.shape[0], self.n_stocks))
+        s1 = tf.convert_to_tensor(s1.reshape(self.batch_size, self.window_length, self.n_stocks, 3))
+        s2 = tf.convert_to_tensor(s2.reshape(self.batch_size, self.n_stocks, self.n_stocks))
+        s3 = tf.convert_to_tensor(s3.reshape(self.batch_size, self.n_stocks))
         
-        ns1 = tf.convert_to_tensor(ns1.reshape(ns1.shape[0], self.window_length, self.n_stocks*4))
-        ns2 = tf.convert_to_tensor(ns2.reshape(ns2.shape[0], self.n_stocks*4, self.n_stocks*4))
-        ns3 = tf.convert_to_tensor(ns3.reshape(ns3.shape[0], self.n_stocks))
+        ns1 = tf.convert_to_tensor(ns1.reshape(self.batch_size, self.window_length, self.n_stocks, 3))
+        ns2 = tf.convert_to_tensor(ns2.reshape(self.batch_size, self.n_stocks, self.n_stocks))
+        ns3 = tf.convert_to_tensor(ns3.reshape(self.batch_size, self.n_stocks))
         return [s1, s2, s3], a, r, d, [ns1, ns2, ns3], idx
 
     def decay(self):
